@@ -7,7 +7,6 @@ from rq import Queue
 from worker import rust_build_task, DEFAULT_RUST_TOML, c_build_task
 
 # Redis接続設定 (Renderの環境変数から取得)
-# Renderでは通常 REDIS_URL や INTERNAL_REDIS_URL が提供されます。
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 print(f"REDIS_URL:{REDIS_URL}") # 隊長の指示に従い、値の決定時にprintします
 
@@ -40,11 +39,10 @@ def home():
 </head>
 <body>
     <h1>🚀 WASMビルドサーバー稼働中</h1>
-    <p>Gemini programming隊の任務、単一コンテナで非同期ビルドを実現中！</p>
+    <p>Render単一コンテナ内でGunicornとRQ Workerが稼働しています。</p>
     <h2>エンドポイント</h2>
     <ul>
         <li><code>POST /rust</code>: Rustコードをビルド</li>
-        <li><code>POST /c-c++</code>: C/C++コードをビルド (現在未実装)</li>
         <li><code>GET /status?taskid=ID</code>: ビルドステータスをポーリング</li>
     </ul>
 </body>
@@ -77,6 +75,16 @@ def status_check():
     elif job_status == 'finished':
         result = job.result
         
+        # ★★★ 修正箇所: 結果が None や無効な場合のガードを追加 ★★★
+        if result is None:
+             # タスクは完了したが、結果データがRedisから取得できない
+            return jsonify({
+                "taskid": task_id, 
+                "status": "error", 
+                "message": "タスクは完了しましたが、結果データ（job.result）がRedisから見つかりません。"
+            }), 500
+        # ★★★ 修正終了 ★★★
+
         if result and result.get('status') == 'completed':
             # 完了時、隊員指定の形式でJSONを返す (200 OK)
             return jsonify({
