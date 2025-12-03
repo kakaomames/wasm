@@ -7,21 +7,27 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     wget \
-    # clang/lld (wasmターゲットに使用可能)
     clang lld \
     supervisor \
-    # 後でクリーンアップ
     && rm -rf /var/lib/apt/lists/*
 
 # --- 🎯 Rust環境のセットアップ ---
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh && \
     sh rustup-init.sh -y --profile minimal --default-toolchain stable && \
     rm rustup-init.sh
+    
+# PATH変数を設定 (Rustツールチェーンへのアクセスを確保)
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+# WASMターゲットの追加
 RUN rustup target add wasm32-unknown-unknown
 
-# ... Flask/RQ依存関係のインストール ...
+# 🎯 WASM-BINDGEN-CLIのインストール (ここが重要！)
+RUN cargo install wasm-bindgen-cli
+
+# --- Python環境とAppコードのセットアップ ---
 WORKDIR /app
+# requirements.txtを先にコピーしてインストールし、キャッシュを有効活用
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -31,5 +37,5 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 EXPOSE 8080
 
-# サーバー起動コマンドを変更: Supervisorを起動し、GunicornとRQ Workerの両方を管理させる
+# サーバー起動コマンドを変更: Supervisorを起動
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
